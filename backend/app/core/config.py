@@ -56,6 +56,8 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     anthropic_api_key: str = ""
     cohere_api_key: str = ""
+    groq_api_key: str = ""  
+
 
     # AWS S3
     aws_access_key_id: str = ""
