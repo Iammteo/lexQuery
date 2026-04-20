@@ -11,9 +11,11 @@ Usage:
 """
 import stripe
 import json
+import os
 
-STRIPE_SECRET_KEY = "sk_test_51SaqN02LJICSbPRmXYogMCN1qY8T7LdE6igDH1L1nhiLf1ryivPzwMQb4e5SruQR0KVa5glY595Romz3TdQ4l4KX009sWTwpuJ"
-STRIPE_PUBLISHABLE_KEY = "pk_test_51SaqN02LJICSbPRmER8IZdj4DRpP8YKUi8sz3ve6Yb7wLoUBVDaacfWoFhT645jalNVOrVuoJV4DN89hsxwgelLZ00XdTU7bFq"
+
+STRIPE_SECRET_KEY = os.environ.get("STRIPE_SECRET_KEY", "")
+STRIPE_PUBLISHABLE_KEY = os.environ.get("STRIPE_PUBLISHABLE_KEY", "")
 
 stripe.api_key = STRIPE_SECRET_KEY
 
