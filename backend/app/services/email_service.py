@@ -121,3 +121,20 @@ def send_invite_email(to_email: str, invited_by: str, tenant_name: str, role: st
       </p>
     """
     _send(to_email, f"You've been invited to {tenant_name} on LexQuery", _base_template(body))
+
+
+def send_password_reset_email(to_email: str, token: str, full_name: str = "") -> None:
+    name = full_name.strip() or "there"
+    reset_url = f"http://localhost:3000/reset-password?token={token}"
+    body = f"""
+      <p style="font-family:Georgia,serif;font-size:11px;color:#8A8672;letter-spacing:.1em;text-transform:uppercase;margin:0 0 18px;">Password reset</p>
+      <h2 style="font-family:Georgia,serif;font-size:22px;font-weight:500;color:#1A2B4A;margin:0 0 12px;letter-spacing:-.01em;">Reset your password</h2>
+      <p style="font-family:Georgia,serif;font-size:15px;color:#3A4A68;line-height:1.65;margin:0 0 26px;">
+        Hi {name}, click the button below to set a new password for your LexQuery account.
+      </p>
+      <a href="{reset_url}" style="display:inline-block;background:#1A2B4A;color:white;padding:12px 28px;border-radius:3px;text-decoration:none;font-size:13px;font-weight:600;margin-bottom:26px;">
+        Reset password →
+      </a>
+      <p style="font-size:12px;color:#8A8672;margin:0;">This link expires in 1 hour. If you did not request a password reset, ignore this email.</p>
+    """
+    _send(to_email, "Reset your LexQuery password", _base_template(body))

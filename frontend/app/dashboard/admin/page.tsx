@@ -90,6 +90,20 @@ export default function AdminPage() {
     finally { setInviting(false) }
   }
 
+  const handleExportAudit = () => {
+    const token = getToken()
+    const url = `${API}/audit/export`
+    fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+      .then(res => res.blob())
+      .then(blob => {
+        const a = document.createElement('a')
+        a.href = URL.createObjectURL(blob)
+        a.download = 'audit_logs.csv'
+        a.click()
+      })
+      .catch(() => alert('Failed to export audit logs'))
+  }
+
   if (isLoading || !user) return <div style={{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center'}}><p style={{color:'#9CA3AF'}}>Loading...</p></div>
 
   return (
@@ -99,7 +113,7 @@ export default function AdminPage() {
         <div style={{maxWidth:1000,margin:'0 auto',display:'flex',alignItems:'center',justifyContent:'space-between',height:56}}>
           <div style={{display:'flex',alignItems:'center',gap:16}}>
             <Link href="/dashboard" style={{color:'rgba(255,255,255,.5)',fontSize:13,textDecoration:'none',display:'flex',alignItems:'center',gap:6}}>
-              ← Dashboard
+              {'<-'} Dashboard
             </Link>
             <span style={{color:'rgba(255,255,255,.2)'}}>·</span>
             <span style={{color:'white',fontSize:13,fontWeight:600}}>Admin Panel</span>
@@ -119,16 +133,24 @@ export default function AdminPage() {
             <h1 style={{fontSize:22,fontWeight:700,color:'#1A2B4A',marginBottom:4}}>Team members</h1>
             <p style={{fontSize:14,color:'#9CA3AF',margin:0}}>{users.length} member{users.length!==1?'s':''} in your organisation</p>
           </div>
-          <button onClick={()=>setShowInvite(!showInvite)} style={{padding:'9px 18px',background:'#1A2B4A',color:'white',border:'none',borderRadius:6,fontSize:14,fontWeight:700,cursor:'pointer'}}>
-            + Invite member
-          </button>
+          <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+            <button
+              onClick={handleExportAudit}
+              style={{padding:'9px 18px',background:'white',color:'#1A2B4A',border:'1px solid #E2E0DB',borderRadius:6,fontSize:14,fontWeight:600,cursor:'pointer'}}
+            >
+              Export audit CSV
+            </button>
+            <button onClick={()=>setShowInvite(!showInvite)} style={{padding:'9px 18px',background:'#1A2B4A',color:'white',border:'none',borderRadius:6,fontSize:14,fontWeight:700,cursor:'pointer'}}>
+              + Invite member
+            </button>
+          </div>
         </div>
 
         {/* Invite form */}
         {showInvite && (
           <div style={{background:'white',border:'1px solid #E2E0DB',borderRadius:10,padding:20,marginBottom:20}}>
             <h3 style={{fontSize:15,fontWeight:600,color:'#1A2B4A',marginBottom:4}}>Invite a team member</h3>
-            <p style={{fontSize:13,color:'#9CA3AF',marginBottom:18}}>They'll receive an email with a magic link to set their password and join your workspace.</p>
+            <p style={{fontSize:13,color:'#9CA3AF',marginBottom:18}}>They will receive an email with a link to set their password and join your workspace.</p>
             <form onSubmit={handleInvite}>
               <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(200px,1fr))',gap:12,marginBottom:14}}>
                 <div>
@@ -153,7 +175,7 @@ export default function AdminPage() {
           </div>
         )}
 
-        {inviteMsg && <div style={{background:'#F0FDF4',border:'1px solid #BBF7D0',borderRadius:8,padding:'10px 14px',fontSize:13,color:'#166534',marginBottom:20}}>✓ {inviteMsg}</div>}
+        {inviteMsg && <div style={{background:'#F0FDF4',border:'1px solid #BBF7D0',borderRadius:8,padding:'10px 14px',fontSize:13,color:'#166534',marginBottom:20}}>Invitation sent to {inviteMsg.replace('Invitation sent to ','')}</div>}
 
         {/* Role guide */}
         <div style={{background:'white',border:'1px solid #E2E0DB',borderRadius:10,padding:18,marginBottom:20}}>

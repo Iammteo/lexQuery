@@ -64,7 +64,7 @@ function EmptyState({hasWorkspace,docCount}:{hasWorkspace:boolean,docCount:numbe
       <h3 style={{fontSize:17,fontWeight:600,color:'#374151',marginBottom:20,textAlign:'center'}}>Get started in three steps</h3>
       <div style={{display:'flex',flexDirection:'column',gap:12}}>
         {[
-          {n:'1',icon:'📄',title:'Upload a document',desc:'Click "+ Upload document" in the sidebar. Supports PDF, Word (.docx), and plain text files.'},
+          {n:'1',icon:'📄',title:'Upload a document',desc:'Click the + button below and choose "Upload files". Supports PDF, Word (.docx), and plain text files.'},
           {n:'2',icon:'⏳',title:'Wait for indexing',desc:'Documents are automatically parsed and indexed. This usually takes under a minute. The status dot turns green when ready.'},
           {n:'3',icon:'💬',title:'Ask a question',desc:'Type your question in the box below. LexQuery will return a cited answer grounded in your uploaded documents.'},
         ].map(step=>(
@@ -105,6 +105,10 @@ export default function DashboardPage() {
   const [newWsName,setNewWsName]=useState('')
   const [deletingDoc,setDeletingDoc]=useState<string|null>(null)
   const [sidebarOpen,setSidebarOpen]=useState(false)
+  const [showQuickActions,setShowQuickActions]=useState(false)
+  const [showUrlQuick,setShowUrlQuick]=useState(false)
+  const [urlQuickInput,setUrlQuickInput]=useState('')
+  const [urlLoading,setUrlLoading]=useState(false)
   const fileRef=useRef<HTMLInputElement>(null)
   const bottomRef=useRef<HTMLDivElement>(null)
 
@@ -115,7 +119,6 @@ export default function DashboardPage() {
     listWorkspaces().then(ws=>{
       setWorkspaces(ws)
       if(ws.length>0){
-        // Restore last active workspace from localStorage
         const savedId = localStorage.getItem(ACTIVE_WS_KEY)
         const saved = savedId ? ws.find(w=>w.id===savedId) : null
         setActiveWs(saved||ws[0])
@@ -135,10 +138,20 @@ export default function DashboardPage() {
     if(!activeWs) return
     localStorage.setItem(ACTIVE_WS_KEY,activeWs.id)
     fetchDocs(activeWs.id)
-    setResults([]) // clear query history when switching workspaces
+    setResults([])
   },[activeWs,fetchDocs])
 
   useEffect(()=>{ bottomRef.current?.scrollIntoView({behavior:'smooth'}) },[results])
+
+  useEffect(()=>{
+    if(!showQuickActions) return
+    const close=(e:MouseEvent)=>{
+      const target=e.target as HTMLElement
+      if(!target.closest('[data-quick-actions]')) setShowQuickActions(false)
+    }
+    document.addEventListener('mousedown',close)
+    return ()=>document.removeEventListener('mousedown',close)
+  },[showQuickActions])
 
   const handleQuery=async()=>{
     if(!query.trim()||querying||!activeWs) return
@@ -200,6 +213,27 @@ export default function DashboardPage() {
     setWorkspaces(prev=>[...prev,ws]);setActiveWs(ws);setNewWsName('');setShowNewWs(false)
   }
 
+  const handleQuickUrlSubmit=async(url:string)=>{
+    if(!url.trim()||!activeWs) return
+    setUrlLoading(true)
+    try{
+      const res=await fetch(`${API}/documents/from-url`,{method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${getToken()}`},body:JSON.stringify({url:url.trim(),workspace_id:activeWs.id})})
+      const data=await res.json()
+      if(!res.ok) throw new Error(data.detail||'Failed to fetch URL')
+      setDocuments(prev=>[data,...prev])
+      setUploadMsg(`Indexing "${data.filename}"...`)
+      const poll=setInterval(async()=>{
+        const updated=await getDocument(data.id)
+        setDocuments(prev=>prev.map(d=>d.id===updated.id?updated:d))
+        if(updated.status==='indexed'||updated.status==='failed'){
+          clearInterval(poll)
+          setUploadMsg(updated.status==='indexed'?`✓ Indexed — ${updated.chunk_count} chunks`:'✗ Indexing failed')
+          setUrlLoading(false)
+        }
+      },3000)
+    }catch(e:unknown){setUploadMsg(`✗ ${e instanceof Error?e.message:'Failed'}`);setUrlLoading(false)}
+  }
+
   const isAdmin=user?.role==='tenant_admin'
   const indexedCount=documents.filter(d=>d.status==='indexed').length
 
@@ -234,9 +268,6 @@ export default function DashboardPage() {
         {activeWs&&(
           <div style={{marginTop:18}}>
             <p style={{fontSize:10,fontWeight:700,color:'rgba(255,255,255,.4)',letterSpacing:'.8px',textTransform:'uppercase',marginBottom:5}}>Documents</p>
-            <button onClick={()=>fileRef.current?.click()} disabled={uploading} style={{width:'100%',padding:'6px 8px',background:'transparent',border:'1px dashed rgba(255,255,255,.2)',borderRadius:4,color:'rgba(255,255,255,.5)',fontSize:12,cursor:uploading?'not-allowed':'pointer',marginBottom:5}}>
-              {uploading?'Uploading...':'+ Upload document'}
-            </button>
             <input ref={fileRef} type="file" accept=".pdf,.docx,.txt" onChange={handleUpload} style={{display:'none'}}/>
             {uploadMsg&&<p style={{fontSize:11,color:'rgba(255,255,255,.4)',marginBottom:5,lineHeight:1.4}}>{uploadMsg}</p>}
             {docsLoading&&<p style={{fontSize:11,color:'rgba(255,255,255,.25)',fontStyle:'italic'}}>Loading...</p>}
@@ -259,7 +290,7 @@ export default function DashboardPage() {
 
         {isAdmin&&(
           <div style={{marginTop:18,paddingTop:14,borderTop:'1px solid rgba(255,255,255,.08)'}}>
-            <Link href="/dashboard/admin" onClick={()=>setSidebarOpen(false)} style={{display:'flex',alignItems:'center',gap:8,padding:'6px 8px',borderRadius:4,color:'rgba(255,255,255,.5)',fontSize:12,textDecoration:'none',transition:'color .15s'}}
+            <Link href="/dashboard/admin" onClick={()=>setSidebarOpen(false)} style={{display:'flex',alignItems:'center',gap:8,padding:'6px 8px',borderRadius:4,color:'rgba(255,255,255,.5)',fontSize:12,textDecoration:'none'}}
               onMouseEnter={e=>(e.currentTarget.style.color='white')} onMouseLeave={e=>(e.currentTarget.style.color='rgba(255,255,255,.5)')}>
               <span>⚙</span> Admin panel
             </Link>
@@ -272,14 +303,21 @@ export default function DashboardPage() {
           <p style={{fontSize:12,color:'rgba(255,255,255,.7)',margin:0,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{user?.full_name||user?.email}</p>
           <p style={{fontSize:10,color:'rgba(255,255,255,.3)',margin:'1px 0 0',textTransform:'capitalize'}}>{user?.role?.replace('_',' ')}</p>
         </div>
-        <button onClick={logout} style={{background:'transparent',border:'none',color:'rgba(255,255,255,.3)',fontSize:11,cursor:'pointer',flexShrink:0,whiteSpace:'nowrap'}}>Sign out</button>
+        <div style={{display:'flex',gap:8,alignItems:'center'}}>
+          <Link href="/dashboard/settings" style={{fontSize:11,color:'rgba(255,255,255,.3)',textDecoration:'none'}} title="Settings">⚙</Link>
+          <button onClick={logout} style={{background:'transparent',border:'none',color:'rgba(255,255,255,.3)',fontSize:11,cursor:'pointer',flexShrink:0,whiteSpace:'nowrap'}}>Sign out</button>
+        </div>
       </div>
     </div>
   )
 
   return (
     <>
-      <style>{`.hm{display:flex}.hd{display:none}@media(max-width:767px){.hm{display:none!important}.hd{display:flex!important}}`}</style>
+      <style>{`
+        .hm{display:flex}.hd{display:none}
+        @media(max-width:767px){.hm{display:none!important}.hd{display:flex!important}}
+        @keyframes spin{to{transform:rotate(360deg)}}
+      `}</style>
       <div style={{display:'flex',height:'100dvh',overflow:'hidden',background:'#F8F7F5',fontFamily:'-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif'}}>
 
         {/* Desktop sidebar */}
@@ -308,6 +346,7 @@ export default function DashboardPage() {
             <div style={{display:'flex',alignItems:'center',gap:12,flexShrink:0}}>
               {activeWs&&<span style={{fontSize:12,color:'#9CA3AF',whiteSpace:'nowrap'}}>{indexedCount} doc{indexedCount!==1?'s':''} · {results.length} quer{results.length!==1?'ies':'y'}</span>}
               {isAdmin&&<Link href="/dashboard/admin" style={{fontSize:12,color:'#6B7280',background:'#F4F4F2',border:'1px solid #E2E0DB',borderRadius:5,padding:'4px 10px',textDecoration:'none',whiteSpace:'nowrap'}} className="hm">Admin</Link>}
+              <Link href="/dashboard/settings" style={{fontSize:12,color:'#6B7280',background:'#F4F4F2',border:'1px solid #E2E0DB',borderRadius:5,padding:'4px 10px',textDecoration:'none',whiteSpace:'nowrap'}} className="hm">Settings</Link>
             </div>
           </div>
 
@@ -321,14 +360,93 @@ export default function DashboardPage() {
           </div>
 
           {/* Query input */}
-          <div style={{padding:'12px 16px',borderTop:'1px solid #E2E0DB',background:'white',flexShrink:0}}>
-            <div style={{display:'flex',gap:10,alignItems:'flex-end'}}>
-              <textarea value={query} onChange={e=>setQuery(e.target.value)} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();handleQuery()}}} placeholder={activeWs?`Ask about "${activeWs.name}" documents...`:'Select a workspace to begin...'} disabled={!activeWs||querying} rows={2} style={{flex:1,padding:'10px 12px',border:'1px solid #E2E0DB',borderRadius:8,fontSize:14,color:'#1A202C',background:'#F8F7F5',resize:'none',outline:'none',fontFamily:'inherit',lineHeight:1.5}}/>
-              <button onClick={handleQuery} disabled={!query.trim()||querying||!activeWs} style={{padding:'10px 18px',background:(!query.trim()||querying||!activeWs)?'#E2E0DB':'#1A2B4A',color:(!query.trim()||querying||!activeWs)?'#9CA3AF':'white',border:'none',borderRadius:8,fontSize:14,fontWeight:700,cursor:(!query.trim()||querying||!activeWs)?'not-allowed':'pointer',height:60,whiteSpace:'nowrap',flexShrink:0}}>
-                {querying?'...':'Ask'}
-              </button>
+          <div style={{padding:'12px 16px 16px',borderTop:'1px solid #E2E0DB',background:'white',flexShrink:0}}>
+            <div style={{maxWidth:720,margin:'0 auto',width:'100%'}}>
+              <div style={{position:'relative'}} data-quick-actions="">
+                {/* Dropdown menu */}
+                {showQuickActions&&activeWs&&(
+                  <div style={{position:'absolute',bottom:52,left:0,background:'white',border:'1px solid #E2E0DB',borderRadius:12,boxShadow:'0 8px 32px rgba(0,0,0,.12)',zIndex:50,minWidth:220,overflow:'hidden'}}>
+                    {[
+                      {icon:'📎',label:'Upload files',action:()=>{fileRef.current?.click();setShowQuickActions(false)}},
+                      {icon:'🔗',label:'Add from URL',action:()=>{setShowUrlQuick(true);setShowQuickActions(false)}},
+                      {icon:'📁',label:'View documents',action:()=>{setSidebarOpen(true);setShowQuickActions(false)}},
+                      ...(results.length>0?[{icon:'✨',label:'New conversation',action:()=>{setResults([]);setShowQuickActions(false)}}]:[]),
+                    ].map((item,i,arr)=>(
+                      <button key={item.label} onClick={item.action}
+                        style={{width:'100%',display:'flex',alignItems:'center',gap:10,padding:'11px 16px',background:'none',border:'none',borderBottom:i<arr.length-1?'1px solid #F4F4F2':'none',fontSize:13,color:'#374151',cursor:'pointer',textAlign:'left',fontFamily:'inherit',fontWeight:500}}
+                        onMouseEnter={e=>e.currentTarget.style.background='#F8F7F5'}
+                        onMouseLeave={e=>e.currentTarget.style.background='none'}
+                      >
+                        <span style={{fontSize:16}}>{item.icon}</span> {item.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {/* Input row */}
+                <div style={{display:'flex',alignItems:'center',border:'1px solid #E2E0DB',borderRadius:24,background:'white',boxShadow:'0 1px 4px rgba(0,0,0,.06)',paddingLeft:6,paddingRight:6,gap:4}}>
+                  <button
+                    onClick={()=>setShowQuickActions(p=>!p)}
+                    title="Quick actions"
+                    style={{width:32,height:32,borderRadius:'50%',background:showQuickActions?'#1A2B4A':'transparent',border:showQuickActions?'none':'1.5px solid #D1D5DB',color:showQuickActions?'white':'#6B7280',fontSize:showQuickActions?16:20,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,transition:'all .15s',lineHeight:1}}
+                  >
+                    {showQuickActions?'×':'+'}
+                  </button>
+                  <textarea
+                    value={query}
+                    onChange={e=>{
+                      setQuery(e.target.value)
+                      e.target.style.height='auto'
+                      e.target.style.height=Math.min(e.target.scrollHeight,160)+'px'
+                    }}
+                    onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();handleQuery()}}}
+                    placeholder={!activeWs?'Select a workspace to begin...':results.length>0?'Ask a follow-up question...':`Ask a question about "${activeWs.name}" documents...`}
+                    disabled={!activeWs||querying}
+                    rows={1}
+                    style={{flex:1,minHeight:44,maxHeight:160,padding:'11px 4px',border:'none',fontSize:14,color:'#1A202C',background:'transparent',resize:'none',outline:'none',fontFamily:'inherit',lineHeight:1.5,overflowY:'auto'}}
+                  />
+                  <button
+                    onClick={handleQuery}
+                    disabled={!query.trim()||querying||!activeWs}
+                    style={{width:32,height:32,borderRadius:'50%',background:(!query.trim()||querying||!activeWs)?'#E2E0DB':'#1A2B4A',border:'none',cursor:(!query.trim()||querying||!activeWs)?'not-allowed':'pointer',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,transition:'background .15s'}}
+                  >
+                    {querying?(
+                      <span style={{width:12,height:12,border:'2px solid rgba(255,255,255,.3)',borderTopColor:'white',borderRadius:'50%',display:'inline-block',animation:'spin .7s linear infinite'}}/>
+                    ):(
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <line x1="22" y1="2" x2="11" y2="13"/>
+                        <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+                      </svg>
+                    )}
+                  </button>
+                </div>
+                {/* Inline URL input */}
+                {showUrlQuick&&activeWs&&(
+                  <div style={{marginTop:8,display:'flex',gap:8,alignItems:'center'}}>
+                    <input
+                      autoFocus
+                      type="url"
+                      value={urlQuickInput}
+                      onChange={e=>setUrlQuickInput(e.target.value)}
+                      onKeyDown={e=>{
+                        if(e.key==='Enter'){handleQuickUrlSubmit(urlQuickInput);setUrlQuickInput('');setShowUrlQuick(false)}
+                        if(e.key==='Escape'){setShowUrlQuick(false);setUrlQuickInput('')}
+                      }}
+                      placeholder="https://example.com/document.pdf"
+                      style={{flex:1,padding:'9px 14px',border:'1px solid #E2E0DB',borderRadius:20,fontSize:13,outline:'none',fontFamily:'inherit'}}
+                    />
+                    <button
+                      onClick={()=>{handleQuickUrlSubmit(urlQuickInput);setUrlQuickInput('');setShowUrlQuick(false)}}
+                      disabled={!urlQuickInput.trim()}
+                      style={{padding:'9px 16px',background:urlQuickInput.trim()?'#1A2B4A':'#E2E0DB',color:urlQuickInput.trim()?'white':'#9CA3AF',border:'none',borderRadius:20,fontSize:13,fontWeight:600,cursor:urlQuickInput.trim()?'pointer':'not-allowed'}}
+                    >
+                      {urlLoading?'Fetching...':'Fetch'}
+                    </button>
+                    <button onClick={()=>{setShowUrlQuick(false);setUrlQuickInput('')}} style={{background:'none',border:'none',color:'#9CA3AF',cursor:'pointer',fontSize:18,lineHeight:1,padding:'0 4px'}}>×</button>
+                  </div>
+                )}
+              </div>
+              <p style={{fontSize:11,color:'#C4C0BA',marginTop:6,textAlign:'center'}}>Enter to send · Shift+Enter for new line</p>
             </div>
-            <p style={{fontSize:11,color:'#9CA3AF',marginTop:6}}>Enter to submit · Shift+Enter for new line · Answers are grounded in your indexed documents</p>
           </div>
         </div>
       </div>

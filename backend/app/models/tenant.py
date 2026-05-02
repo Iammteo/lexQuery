@@ -1,10 +1,9 @@
 import uuid
 from typing import Optional
-from sqlalchemy import String, Boolean, Text
+from sqlalchemy import String, Boolean, Text , Integer
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
 from app.models.mixins import TimestampMixin
-
 
 class Tenant(Base, TimestampMixin):
     """
@@ -53,6 +52,16 @@ class Tenant(Base, TimestampMixin):
         nullable=True,
         comment="JSON: custom LLM model, retention policy, etc.",
     )
+
+    # Stripe billing
+    stripe_customer_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    stripe_subscription_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    subscription_status: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, default="trialing")
+    current_plan: Mapped[Optional[str]] = mapped_column(String(50), nullable=True, default="trial")
+    trial_ends_at: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    query_count_this_month: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, default=0)
+    query_count_reset_at: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    logo_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
 
     # Relationships (populated as other models are added)
     users: Mapped[list["User"]] = relationship(back_populates="tenant")

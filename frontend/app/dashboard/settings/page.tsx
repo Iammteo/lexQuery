@@ -39,16 +39,14 @@ function UsageBar({ label, used, limit }: { label: string; used: number; limit: 
 }
 
 export default function SettingsPage() {
-  const { user, isLoading } = useAuth()
+  const { user, isLoading, logout } = useAuth()
   const router = useRouter()
   const [usage, setUsage] = useState<Usage | null>(null)
-  const [orgName, setOrgName] = useState('')
-  const [saving, setSaving] = useState(false)
-  const [saveMsg, setSaveMsg] = useState('')
-  const [logoUrl, setLogoUrl] = useState('')
-  const [logoUploading, setLogoUploading] = useState(false)
   const [portalLoading, setPortalLoading] = useState(false)
-  const logoRef = useRef<HTMLInputElement>(null)
+  const [eraseInput, setEraseInput] = useState('')
+  const [erasing, setErasing] = useState(false)
+  const [eraseError, setEraseError] = useState('')
+  const [showEraseConfirm, setShowEraseConfirm] = useState(false)
 
   useEffect(() => {
     if (!isLoading && !user) router.push('/login')
@@ -82,6 +80,29 @@ export default function SettingsPage() {
       if (data.url) window.location.href = data.url
       else alert('Checkout not available — set up Stripe first.')
     } catch { alert('Could not start checkout.') }
+  }
+
+  const handleEraseAllData = async () => {
+    if (eraseInput !== 'DELETE') {
+      setEraseError('Please type DELETE to confirm')
+      return
+    }
+    setErasing(true)
+    setEraseError('')
+    try {
+      const res = await fetch(`${API}/billing/erase-all-data`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${getToken()}` },
+      })
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data.detail || 'Erasure failed')
+      }
+      logout()
+    } catch (e: unknown) {
+      setEraseError(e instanceof Error ? e.message : 'Erasure failed')
+      setErasing(false)
+    }
   }
 
   const planColor = (plan: string) => {
@@ -182,7 +203,7 @@ export default function SettingsPage() {
         )}
 
         {/* Account info */}
-        <div style={{ background: 'white', border: '1px solid #E2E0DB', borderRadius: 10, padding: 24 }}>
+        <div style={{ background: 'white', border: '1px solid #E2E0DB', borderRadius: 10, padding: 24, marginBottom: 20 }}>
           <h2 style={{ fontSize: 16, fontWeight: 700, color: '#1A2B4A', marginBottom: 18 }}>Account</h2>
           <div style={{ display: 'grid', gap: 12 }}>
             {[
@@ -202,6 +223,45 @@ export default function SettingsPage() {
           </div>
         </div>
 
+        {/* GDPR — Data erasure */}
+        {user.role === 'tenant_admin' && (
+          <div style={{ background: 'white', border: '1px solid #FECACA', borderRadius: 10, padding: 24 }}>
+            <h2 style={{ fontSize: 16, fontWeight: 700, color: '#DC2626', marginBottom: 6 }}>Danger zone</h2>
+            <p style={{ fontSize: 13, color: '#6B7280', marginBottom: 18, lineHeight: 1.65 }}>
+              Permanently delete all your organisation's data — documents, queries, audit logs, and your account.
+              This action is irreversible and cannot be undone.
+            </p>
+            {!showEraseConfirm ? (
+              <button onClick={() => setShowEraseConfirm(true)} style={{ padding: '9px 18px', background: 'white', color: '#DC2626', border: '1px solid #FECACA', borderRadius: 6, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+                Request data erasure (GDPR Art. 17)
+              </button>
+            ) : (
+              <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: 8, padding: 20 }}>
+                <p style={{ fontSize: 13, fontWeight: 600, color: '#DC2626', marginBottom: 8 }}>⚠ This will permanently delete everything. Type DELETE to confirm.</p>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <input
+                    type="text"
+                    value={eraseInput}
+                    onChange={e => setEraseInput(e.target.value)}
+                    placeholder="Type DELETE"
+                    style={{ flex: 1, minWidth: 160, padding: '9px 12px', border: '1px solid #FECACA', borderRadius: 6, fontSize: 14, outline: 'none', background: 'white' }}
+                  />
+                  <button
+                    onClick={handleEraseAllData}
+                    disabled={erasing || eraseInput !== 'DELETE'}
+                    style={{ padding: '9px 18px', background: eraseInput === 'DELETE' ? '#DC2626' : '#E2E0DB', color: eraseInput === 'DELETE' ? 'white' : '#9CA3AF', border: 'none', borderRadius: 6, fontSize: 13, fontWeight: 700, cursor: eraseInput === 'DELETE' ? 'pointer' : 'not-allowed' }}
+                  >
+                    {erasing ? 'Erasing...' : 'Erase all data'}
+                  </button>
+                  <button onClick={() => { setShowEraseConfirm(false); setEraseInput(''); setEraseError('') }} style={{ padding: '9px 14px', background: 'white', color: '#6B7280', border: '1px solid #E2E0DB', borderRadius: 6, fontSize: 13, cursor: 'pointer' }}>
+                    Cancel
+                  </button>
+                </div>
+                {eraseError && <p style={{ fontSize: 13, color: '#DC2626', marginTop: 8 }}>{eraseError}</p>}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   )

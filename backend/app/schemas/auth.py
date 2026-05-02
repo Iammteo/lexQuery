@@ -3,15 +3,8 @@ from pydantic import BaseModel, EmailStr, field_validator
 
 
 class RegisterRequest(BaseModel):
-    """
-    Creates a new tenant and its first Tenant Admin user in one step.
-    This is the onboarding flow — one request, one organisation set up.
-    """
-    # Tenant details
     tenant_name: str
-    tenant_slug: str  # e.g. "acme-legal" — must be URL-safe
-
-    # First admin user
+    tenant_slug: str
     email: EmailStr
     password: str
     full_name: Optional[str] = None
@@ -38,17 +31,16 @@ class LoginRequest(BaseModel):
 
 
 class TokenResponse(BaseModel):
-    """Returned on successful login or registration."""
     access_token: str
     token_type: str = "bearer"
-    expires_in: int  # seconds
+    expires_in: int
     user_id: str
     tenant_id: str
     role: str
+    requires_totp: bool = False
 
 
 class UserResponse(BaseModel):
-    """Public user profile — never includes hashed_password."""
     id: str
     email: str
     full_name: Optional[str]

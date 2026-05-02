@@ -89,3 +89,70 @@ async def stripe_webhook(request: Request, db: AsyncSession = Depends(get_db)):
     except Exception as e:
         logger.error(f"[billing] Webhook error: {e}")
         raise HTTPException(500, str(e))
+
+
+@router.delete("/erase-all-data")
+async def erase_all_data(
+    db: AsyncSession = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """
+    GDPR right to erasure — permanently delete all tenant data.
+    Requires Tenant Admin role. This cannot be undone.
+    """
+    from sqlalchemy import select, delete
+    from app.models.user import User, UserRole
+    from app.models.document import Document
+    from app.models.workspace import Workspace, WorkspaceMember
+    from app.models.audit_log import AuditLog
+    from app.models.tenant import Tenant
+    from app.services.s3_service import get_s3_service
+    from app.services.weaviate_service import get_weaviate_service
+
+    role = str(current_user.role).replace("UserRole.", "").strip()
+    if role != "tenant_admin":
+        raise HTTPException(403, "Only Tenant Admins can erase all data")
+
+    tenant_id = current_user.tenant_id
+    logger.warning(f"[gdpr] Erase all data requested for tenant {tenant_id}")
+
+    # Delete documents from S3 and Weaviate
+    try:
+        docs_result = await db.execute(
+            select(Document).where(Document.tenant_id == tenant_id)
+        )
+        docs = docs_result.scalars().all()
+        s3 = get_s3_service()
+        for doc in docs:
+            try:
+                s3.delete(doc.s3_key)
+            except Exception:
+                pass
+        try:
+            weaviate_svc = get_weaviate_service()
+            for doc in docs:
+                try:
+                    weaviate_svc.delete_document_chunks(tenant_id, doc.id)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+    except Exception as e:
+        logger.error(f"[gdpr] Storage cleanup failed: {e}")
+
+    # Delete all DB records for this tenant
+    try:
+        await db.execute(delete(AuditLog).where(AuditLog.tenant_id == tenant_id))
+        await db.execute(delete(Document).where(Document.tenant_id == tenant_id))
+        await db.execute(delete(WorkspaceMember).where(WorkspaceMember.tenant_id == tenant_id))
+        await db.execute(delete(Workspace).where(Workspace.tenant_id == tenant_id))
+        await db.execute(delete(User).where(User.tenant_id == tenant_id))
+        await db.execute(delete(Tenant).where(Tenant.id == tenant_id))
+        await db.commit()
+    except Exception as e:
+        await db.rollback()
+        logger.error(f"[gdpr] DB erasure failed: {e}")
+        raise HTTPException(500, "Data erasure failed. Please contact support.")
+
+    logger.warning(f"[gdpr] All data erased for tenant {tenant_id}")
+    return {"message": "All data has been permanently deleted."}

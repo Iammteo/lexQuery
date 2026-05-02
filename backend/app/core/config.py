@@ -51,12 +51,31 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 480
     api_key_pepper: str
+    totp_issuer: str = "LexQuery"
 
     # AI providers
     openai_api_key: str = ""
     anthropic_api_key: str = ""
     cohere_api_key: str = ""
     groq_api_key: str = ""  
+
+    # Gmail
+    gmail_user: str = ""
+    gmail_app_password: str = ""
+
+    # Google OAuth
+    google_client_id: str = ""
+    google_client_secret: str = ""
+    google_redirect_uri: str = "http://localhost:8000/v1/auth/google/callback"
+
+    # Stripe
+    stripe_publishable_key: str = ""
+    stripe_secret_key: str = ""
+    stripe_starter_price_id: str = ""
+    stripe_professional_price_id: str = ""
+    stripe_enterprise_price_id: str = ""
+    stripe_webhook_secret: str = ""
+    stripe_trial_days: int = 14
 
 
     # AWS S3
